@@ -29,14 +29,11 @@ function createWindow () {
       label: 'File',
       submenu: [
         {
-          label: 'Open File',
+          label: 'Open Folder',
           accelerator: 'CmdOrCtrl+O',
           click() {
-            openFile();
+            openDir();
           }
-        },
-        {
-          label: 'Open Folder'
         }
       ]
     },
@@ -198,4 +195,13 @@ function openFile() {
   mainWindow.webContents.send('new-file', fileContent);
 };
 
+// Opens directory
+function openDir() {
+  const directory = dialog.showOpenDialogSync(mainWindow, {
+    properties: ['openDirectory'],
+  });
+  if (!directory) return;
 
+  const dir = directory[0];
+  mainWindow.webContents.send('new-dir', dir);
+}
