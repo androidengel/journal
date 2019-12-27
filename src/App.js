@@ -2,9 +2,11 @@ import React from 'react';
 import Markdown from 'markdown-to-jsx';
 import AceEditor from 'react-ace';
 import styled from 'styled-components';
+import { format } from 'date-fns';
 import 'ace-builds/src-noconflict/mode-markdown';
 import 'ace-builds/src-noconflict/theme-dracula';
 import './App.css';
+import { act } from 'react-dom/test-utils';
 
 const settings = window.require('electron-settings');
 const { ipcRenderer } = window.require('electron');
@@ -14,6 +16,7 @@ class App extends React.Component {
   state = {
     loadedFile: '',
     filesData: [],
+    activeIndex: 0,
     directory: settings.get('directory') || null
   }
   constructor() {
@@ -25,10 +28,8 @@ class App extends React.Component {
       this.loadAndReadFiles(directory);
     }
 
-    ipcRenderer.on('new-file', (event, fileContent) => {
-      this.setState({
-        loadedFile: fileContent
-      });
+    ipcRenderer.on('save-file', (event) => {
+      this.saveFile();
     });
 
     ipcRenderer.on('new-dir', (event, directory) => {
@@ -43,25 +44,75 @@ class App extends React.Component {
   loadAndReadFiles = (directory) => {
     fs.readdir(directory, (err, files) => {
       const filteredFiles = files.filter((file) => file.includes('.md'));
-      const filesData = filteredFiles.map((file) => ({
-        path: `${directory}\\${file}`
-      }));
-      
-      this.setState({
-        filesData
+      const filesData = filteredFiles.map((file) => {
+        const date = file.substr(
+          file.indexOf('_') + 1,
+          file.indexOf('.') - file.indexOf('_') - 1
+        )
+        return {
+          date,
+          path: `${directory}\\${file}`,
+          title: file.substr(0, file.indexOf('_'))
+        }
       });
+
+      filesData.sort((a, b) => {
+        const aDate = new Date(a.date);
+        const bDate = new Date(b.date);
+        const aSec = aDate.getTime();
+        const bSec = bDate.getTime();
+        return bSec - aSec;
+      });
+      
+      this.setState({ filesData }, () => this.loadFile(0));
+    })
+  };
+
+  changeFile = (index) => () => {
+    const { activeIndex } = this.state;
+    if (index !== activeIndex) {
+      this.saveFile();
+      this.loadFile(index);
+    }
+  };
+
+  loadFile = (index) => {
+    const { filesData } = this.state;
+
+    const content = fs.readFileSync(filesData[index].path).toString();
+
+    this.setState({
+      loadedFile: content,
+      activeIndex: index
+    });
+  };
+
+  saveFile = () => {
+    const { activeIndex, loadedFile, filesData } = this.state;
+    fs.writeFile(filesData[activeIndex].path, loadedFile, (err) => {
+      if (err) return console.log(err);
+      console.log('saved');
     })
   };
 
   render() {
+    const { loadedFile, activeIndex, filesData, directory } = this.state;
     return (
-      <div className="App">
+      <AppWrap className="App">
         <Header>Journal</Header>
-        {this.state.directory ? (
+        {directory ? (
           <Split>
-            <div>
-              {this.state.filesData.map((file) => <h1>{file.path}</h1>)}
-            </div>
+            <FilesWindow>
+              {filesData.map((file, index) => (
+                <FileButton
+                  active={activeIndex === index}
+                  onClick={this.changeFile(index)}
+                >
+                  <p className="title">{file.title}</p>
+                  <p className="date">{formatDate(file.date)}</p>
+                </FileButton>)
+              )}
+            </FilesWindow>
             <CodeWindow>
               <AceEditor
                 mode="markdown"
@@ -72,11 +123,11 @@ class App extends React.Component {
                   })
                 }}
                 name="markdown_editor"
-                value={this.state.loadedFile}
+                value={loadedFile}
               />
             </CodeWindow>
             <RenderedWindow>
-              <Markdown>{this.state.loadedFile}</Markdown>
+              <Markdown>{loadedFile}</Markdown>
             </RenderedWindow>
           </Split>
         ) : (
@@ -84,12 +135,16 @@ class App extends React.Component {
             <h1>Press CmdORCtrl_O to open directory</h1>
           </LoadingMessage>
         )}
-      </div>
+      </AppWrap>
     );
   }
 }
 
 export default App;
+
+const AppWrap = styled.div`
+  margin-top: 23px;
+`;
 
 const Header = styled.header`
   background-color: #191324;
@@ -120,6 +175,23 @@ const Split = styled.div`
   height: 100vh;
 `;
 
+const FilesWindow = styled.div`
+  background: #140f1d;
+  border-right: solid 1px #302b3a;
+  position: relative;
+  width: 20%;
+  &:after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+    box-shadow: -10px 0 20px rgba(0, 0, 0, 0.3) inset;
+  }
+`;
+
 const CodeWindow = styled.div`
   flex: 1;
   padding-top: 2rem;
@@ -143,3 +215,32 @@ const RenderedWindow = styled.div`
     color: #e54b4b;
   }
 `;
+
+const FileButton = styled.button`
+  padding: 10px;
+  width: 100%;
+  background: #191324;
+  opacity: 0.4;
+  color: white;
+  border: none;
+  border-bottom: solid 1px #302b3a;
+  transition: 0.3s ease all;
+  &:hover {
+    opacity: 1;
+    border-left: solid 4px #82d8d8;
+  }
+  ${({active}) => active && `
+    opacity: 1;
+    border-left: solid 4px #82d8d8;
+  `};
+  .title {
+    font-weight: bold;
+    font-size: 0.9rem;
+    margin: 0 0 5px;
+  }
+  .date {
+    margin: 0;
+  }
+`;
+
+const formatDate = (date) => format(new Date(date), 'MMMM dd yyyy');
