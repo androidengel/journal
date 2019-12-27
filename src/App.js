@@ -17,6 +17,8 @@ class App extends React.Component {
     loadedFile: '',
     filesData: [],
     activeIndex: 0,
+    newEntry: false,
+    newEntryName: '',
     directory: settings.get('directory') || null
   }
   constructor() {
@@ -95,14 +97,49 @@ class App extends React.Component {
     })
   };
 
+  newFile = (e) => {
+    e.preventDefault();
+    const { newEntryName, directory, filesData } = this.state;
+    const fileDate = format(new Date(), 'MM-dd-yy');
+    const filePath = `${directory}/${newEntryName}_${fileDate}.md`;
+    fs.writeFile(filePath, '', err => {
+      if (err) return console.log(err);
+
+      filesData.unshift({
+        path: filePath,
+        date: fileDate,
+        title: newEntryName
+      });
+      
+      this.setState({
+        newEntrY: false,
+        newEntryName: '',
+        loadedFile: '',
+        filesData
+      })
+    })
+  }
+
   render() {
-    const { loadedFile, activeIndex, filesData, directory } = this.state;
+    const { loadedFile, activeIndex, filesData, directory, newEntry, newEntryName } = this.state;
     return (
       <AppWrap className="App">
         <Header>Journal</Header>
         {directory ? (
           <Split>
             <FilesWindow>
+              <Button onClick={() => this.setState({ newEntry: !newEntry })}>
+                + New Entry
+              </Button>
+              {newEntry &&
+                <form onSubmit={this.newFile}>
+                  <input 
+                    value={newEntryName}
+                    onChange={(e) => this.setState({newEntryName: e.target.value})} 
+                    autoFocus 
+                    type="text"/>
+                </form>
+              }
               {filesData.map((file, index) => (
                 <FileButton
                   active={activeIndex === index}
@@ -240,6 +277,22 @@ const FileButton = styled.button`
   }
   .date {
     margin: 0;
+  }
+`;
+
+const Button = styled.button`
+  display: block;
+  background: transparent;
+  color: white;
+  border: solid 1px #82d8d8;
+  border-radius: 4px;
+  margin: 1rem auto;
+  font-size: 1rem;
+  transition: 0.3s ease all;
+  padding 5px 10px;
+  &:hover {
+    background: #82d8d8;
+    color: #191324;
   }
 `;
 
